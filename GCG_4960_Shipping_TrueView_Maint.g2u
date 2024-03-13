@@ -1,0 +1,148 @@
+Program.Sub.ScreenSU.Start
+Gui.Form..create
+Gui.Form..caption("Shipping TrueView Options")
+Gui.Form..size(4875,2895)
+Gui.Form..minx(0)
+Gui.Form..miny(0)
+Gui.Form..position(0,0)
+Gui.Form..event(UnLoad,Form_UnLoad)
+Gui.Form..forecolor(0)
+Gui.Form..BackColor(-2147483633)
+Gui.Form..maxbutton(False)
+Gui.Form..mousepointer(0)
+Gui.Form..sizeable(False)
+Gui.Form.lbl4.create(label,"Refresh Time (Minutes)",True,1935,255,1,360,270,True,0,Arial,8,-2147483633,0)
+Gui.Form.lbl4.defaultvalue("")
+Gui.Form.txtRefresh_Orders.create(textbox,"",True,525,300,0,375,495,True,0,Arial,8,-2147483643,2)
+Gui.Form.txtRefresh_Orders.defaultvalue("")
+Gui.Form.txtRefresh_Orders.tabstop(True)
+Gui.Form.txtRefresh_Orders.tabindex(9)
+Gui.Form.txtRefresh_Orders.NumericOnly(2)
+Gui.Form.lbl5.create(label,"Cutoff Days",True,1050,255,1,360,1050,True,0,Arial,8,-2147483633,0)
+Gui.Form.lbl5.defaultvalue("")
+Gui.Form.txtCutOff_Orders.create(textbox,"",True,540,300,0,375,1275,True,0,Arial,8,-2147483643,2)
+Gui.Form.txtCutOff_Orders.defaultvalue("")
+Gui.Form.txtCutOff_Orders.tabstop(True)
+Gui.Form.txtCutOff_Orders.tabindex(10)
+Gui.Form.txtCutOff_Orders.NumericOnly(2)
+Gui.Form.cmdSave_Orders.create(button)
+Gui.Form.cmdSave_Orders.caption("Save")
+Gui.Form.cmdSave_Orders.size(855,375)
+Gui.Form.cmdSave_Orders.position(360,1860)
+Gui.Form.cmdSave_Orders.event(Click,cmdsave_orders_click)
+Gui.Form.cmdSave_Orders.defaultvalue("")
+Gui.Form.cmdSave_Orders.tabstop(True)
+Gui.Form.cmdSave_Orders.tabindex(11)
+Gui.Form.cmdRestore_Orders.create(button)
+Gui.Form.cmdRestore_Orders.caption("Restore Defaults")
+Gui.Form.cmdRestore_Orders.size(1560,375)
+Gui.Form.cmdRestore_Orders.position(1665,1860)
+Gui.Form.cmdRestore_Orders.event(Click,cmdrestore_orders_click)
+Gui.Form.cmdRestore_Orders.defaultvalue("")
+Gui.Form.cmdRestore_Orders.tabstop(True)
+Gui.Form.cmdRestore_Orders.tabindex(12)
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+'BN, Mar 21, 2018
+'The project 4960 description is at the bottom
+f.Intrinsic.Control.Try
+v.Local..BulkDeclareString(sError,sDir)
+v.Local.bEx.Declare
+
+f.ODBC.Connection!conx.OpenCompanyConnection
+
+'Get the current Refresh rate and Cutoff days
+F.ODBC.Connection!conX.OpenLocalRecordsetRW("rst","Select top 1 Refresh_Rate,CutOff_Days From GCG_4960_TV_OPT")
+F.Intrinsic.Control.If(V.ODBC.conX!rst.EOF,=,False)	
+	gui.Form.txtRefresh_Orders.Text(V.ODBC.conX!rst.FieldVal!Refresh_Rate)
+	gui.Form.txtCutOff_Orders.Text(V.ODBC.conX!rst.FieldVal!Cutoff_Days)
+F.Intrinsic.Control.EndIf
+F.ODBC.conX!rst.Close
+
+gui.Form..Show
+
+F.Intrinsic.Control.Catch
+	F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}{1}GAB Version: {5}}",V.Ambient.ScriptPath,V.Ambient.Newline,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Ambient.GABVersion,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)	
+F.Intrinsic.Control.EndTry
+Program.Sub.Main.End
+
+Program.Sub.cmdRestore_orders_click.Start
+f.Intrinsic.Control.Try
+V.Local.sError.Declare
+
+gui.Form.txtRefresh_Orders.Text("2")
+gui.Form.txtCutOff_Orders.Text("7")
+
+F.Intrinsic.Control.Catch
+	F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}{1}GAB Version: {5}}",V.Ambient.ScriptPath,V.Ambient.Newline,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Ambient.GABVersion,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)	
+F.Intrinsic.Control.EndTry
+Program.Sub.cmdRestore_orders_click.End
+
+Program.Sub.cmdSave_orders_click.Start
+f.Intrinsic.Control.Try
+v.Local..BulkDeclareString(sError,sNewFQN,sOldFQN)
+v.Local..BulkDeclareLong(iRefresh,iCutOff)
+V.Local.bEx.Declare
+
+v.Local.iRefresh.Set(V.Screen.Form!txtRefresh_Orders.Text)
+v.Local.iCutOff.Set(V.Screen.Form!txtCutOff_Orders.Text)
+
+f.Intrinsic.Control.If(v.Local.iRefresh,<,1,or,v.Local.iCutOff,<,1)
+	f.Intrinsic.UI.Msgbox("Refresh Rate and Cutoff Date must be greate than 0","Invalid")
+	f.Intrinsic.Control.ExitSub
+f.Intrinsic.Control.EndIf
+
+f.Intrinsic.UI.InvokeWaitDialog("Saving...")
+F.ODBC.Connection!conX.OpenLocalRecordsetRW("rst","Select * From GCG_4960_TV_OPT")
+F.Intrinsic.Control.If(V.ODBC.conX!rst.EOF)
+	F.ODBC.conX!rst.AddNew
+F.Intrinsic.Control.EndIf
+
+F.ODBC.conX!rst.Set!Refresh_Rate(V.Screen.Form!txtRefresh_Orders.Text)
+F.ODBC.conX!rst.Set!Cutoff_Days(V.Screen.Form!txtCutOff_Orders.Text)
+F.ODBC.conX!rst.Update
+F.ODBC.conX!rst.Close
+f.Intrinsic.UI.CloseWaitDialog
+
+F.Intrinsic.Control.Catch
+	F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}{1}GAB Version: {5}}",V.Ambient.ScriptPath,V.Ambient.Newline,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Ambient.GABVersion,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)	
+F.Intrinsic.Control.EndTry
+
+Program.Sub.cmdsave_orders_click.End
+
+Program.Sub.Form_UnLoad.Start
+f.Intrinsic.Control.Try
+V.Local.sError.Declare
+
+F.ODBC.Connection!conX.close
+F.Intrinsic.Control.End
+
+F.Intrinsic.Control.Catch
+	F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}{1}GAB Version: {5}}",V.Ambient.ScriptPath,V.Ambient.Newline,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Ambient.GABVersion,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)	
+F.Intrinsic.Control.EndTry
+Program.Sub.Form_UnLoad.End
+
+Program.Sub.Comments.Start
+${$0$}$$}$BAO$}$3/21/2018 8:59:51 AM$}$False
+${$3$}$0$}$$}$0$}$-1$}$$}$12:00:00 AM$}$
+'BN, Mar 21, 2018
+This is is custom TrueView to show shipping information for current orders
+
+1/Cutoff days and Refresh time are set in GCG_4960_Shipping_TrueView_Maint.g2u
+2/GCG_4960_Priority_Orders.g2u will launch and refresh the web page
+3/Order with (Order_Header.Code_Sort = 'PRTY' or Order_Line.User_2 = 'PRTY') and  Back Order > 0 are pulled in
+4/Lines are colored based on Locations
+5/Order Numbers are colored based on Shipping Hold flag
+6/This will be run for 2 company codes: MAD and STX of Mum Industry, Inc.
+7/The Web folder will be Global\Trueview\4960\XXX where XXX is the company code
+8/The Trueview can be run only 1 time from a custom menu item.
+If the GCG_4960_Priority_Orders.g2u is attached to a Task Scheduler on Daily, it will refresh the web page at interval until 11.00 pm
+Program.Sub.Comments.End
