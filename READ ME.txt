@@ -1,0 +1,2 @@
+All these files in GCG_4960_CompanyCode_Web_Folder.zip have to be copied in folder: Global\Trueview\4960\XXX
+where XXX is the company code (MAD and STX are the 2 intended company codes of Mum Industries, Inc. that this project is written for)
