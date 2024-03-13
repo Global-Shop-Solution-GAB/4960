@@ -1,0 +1,201 @@
+Program.Sub.ScreenSU.Start
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+v.Global.sCutOffDate.Declare
+v.Global.iRefresh_Rate.Declare
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+'BN, Mar 21, 2018
+'The project 4960 description is at the bottom
+f.Intrinsic.Control.Try
+v.Local..BulkDeclareString(sError,sRet)
+v.Local..BulkDeclareLong(iHour,iCutOff_Days,iSleep)
+v.Local.dCutOffDate.Declare
+
+f.ODBC.Connection!conx.OpenCompanyConnection
+
+'Loop based on the iSleep time. Condition to stop: if past 11pm, then unload, or if switch = 'O' (run once from a custom menu item setup with switch 'O') then unload.
+F.Intrinsic.Control.Do			
+	'Get option of Refresh rate and CutOff days
+	F.ODBC.Connection!conX.OpenLocalRecordsetRW("rst","Select top 1 Refresh_Rate,CutOff_Days From GCG_4960_TV_OPT")
+	F.Intrinsic.Control.If(V.ODBC.conX!rst.EOF)	
+		v.Local.iCutOff_Days.Set(7)
+		v.Global.iRefresh_Rate.Set(30000)
+	f.Intrinsic.Control.Else
+		v.Local.iCutOff_Days.Set(V.ODBC.conX!rst.FieldVal!Cutoff_Days)
+		v.Global.iRefresh_Rate.Set(V.ODBC.conX!rst.FieldVal!Refresh_Rate)
+		f.Intrinsic.Math.Mult(v.Global.iRefresh_Rate,60000,v.Global.iRefresh_Rate)	
+	F.Intrinsic.Control.EndIf
+	F.ODBC.conX!rst.Close
+	f.Intrinsic.Date.DateAdd("d",v.Local.iCutOff_Days,v.Ambient.Date,v.Local.dCutOffDate)
+	f.Intrinsic.String.Format(v.Local.dCutOffDate,"YYYY-MM-DD",v.Global.sCutOffDate)
+
+	'Check the time and see if it is past 11 pm
+	F.Intrinsic.Date.Hour(v.Ambient.Now,v.Local.iHour)
+	F.Intrinsic.Control.If(v.Local.iHour,>=,23)
+		f.Intrinsic.Control.CallSub("Unload")
+	F.Intrinsic.Control.Else
+		F.Intrinsic.Control.CallSub("Load")	
+		'This is to run once if lauched from a custom menu item with switch 'O'
+		F.Intrinsic.Control.If(V.Caller.Switches,=,"O")
+			f.Intrinsic.Control.CallSub("Unload")
+		F.Intrinsic.Control.EndIf				
+		f.Intrinsic.Math.Div(v.Global.iRefresh_Rate,1000,v.Local.iSleep)		
+		F.Intrinsic.UI.Sleep(v.Local.iSleep)
+	F.Intrinsic.Control.EndIf
+F.Intrinsic.Control.Loop
+
+F.Intrinsic.Control.Catch
+	F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}{1}GAB Version: {5}}",V.Ambient.ScriptPath,V.Ambient.Newline,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Ambient.GABVersion,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)	
+F.Intrinsic.Control.EndTry
+Program.Sub.Main.End
+
+Program.Sub.Load.Start
+f.Intrinsic.Control.Try
+v.Local..BulkDeclareString(sError,sSQL,sRet,sFile,sFQN,sHTML,sHold,sCompanyName,sCol,sRowColor,sDir,sOrderNumColor)
+v.local..BulkDeclareLong(i1,i2)
+v.Local.bEx.Declare
+v.Local.dCutOffDate.Declare
+
+'Check TrueView folder
+f.Intrinsic.String.Build("{0}\TrueView\4960\{1}",V.Caller.GlobalDir,v.Caller.CompanyCode,v.Local.sDir)
+f.Intrinsic.File.DirExists(v.Local.sDir,v.Local.bEx)
+f.Intrinsic.Control.If(v.Local.bEx.Not)
+	f.Intrinsic.UI.Msgbox("Please set up folder for TrueView at Global\TrueView\XXX where XXX is the company code","Wrong Setup")
+	f.Intrinsic.Control.CallSub("Unload")
+f.Intrinsic.Control.EndIf
+
+'Get Company Name
+f.ODBC.Connection!conx.ExecuteAndReturn("select Top 1 Name_Company from V_Company",v.Local.sRet)
+f.Intrinsic.Control.If(v.Local.sRet.Trim,<>,"")
+	v.Local.sCompanyName.Set(v.Local.sRet)
+f.Intrinsic.Control.else
+	v.Local.sCompanyName.Set(v.Caller.CompanyCode)
+f.Intrinsic.Control.EndIf
+
+'1/Load Template GCG_4960_Template.html
+F.Intrinsic.String.Build("{0}\TrueView\4960\{1}\GCG_4960_TEMPLATE.html",V.Caller.GlobalDir,v.Caller.CompanyCode,V.Local.sFQN)
+f.Intrinsic.File.Exists(v.Local.sFQN,v.Local.bEx)
+f.Intrinsic.Control.If(v.Local.bEx.Not)
+	f.Intrinsic.String.Build("Template {0} does not exist",v.Local.sFQN,v.Local.sHold)
+	f.Intrinsic.UI.Msgbox(v.Local.sHold,"File")
+	f.Intrinsic.Control.CallSub("Unload")
+f.Intrinsic.Control.EndIf
+F.Intrinsic.file.File2String(V.Local.sFQN,V.Local.sHTML)
+
+'2/Load Orders to table O
+f.Intrinsic.Control.If(v.DataTable.O.Exists)
+	f.Data.DataTable.Close("O")
+f.Intrinsic.Control.EndIf
+f.Intrinsic.String.Build("Select o.Order_No,Left(o.Record_No,3) As Record_No,o.Customer,c.Name_Customer,o.Part,o.Location,o.Description,o.Qty_Ordered,o.Qty_BO,o.Date_Item_Prom ,s.Ship_Via_Ship,s.Carrier_CD,s.State_Ship ,h.Code_Sort,o.User_2,h.SHP_HLD_FLAG From V_ORder_Lines o left join V_ORDER_HEADER h on o.Order_No = h.Order_No left join V_Customer_Master c on o.Customer = c.Customer left join V_Order_Ship_To s on h.Order_No = s.Order_No and h.Ship_ID = s.Order_Ship_ID Where (h.Code_sort = 'PRTY' or o.User_2 = 'PRTY') and Qty_BO > 0 and Date_Item_Prom <= '{0}' Order By Date_Item_Prom ASC,o.Order_No ASC,Record_No ASC",v.Global.sCutOffDate,v.Local.sSQL)
+f.Data.DataTable.CreateFromSQL("O","conx",v.Local.sSQL,True)
+'Format number in whole number
+F.Data.DataTable.SetValueFormat("O",-1,"Qty_Ordered","Qty_Ordered","#0")
+F.Data.DataTable.SetValueFormat("O",-1,"Qty_BO","Qty_BO","#0")
+
+'Load table O to HTML -- using Datatable.ExportHTML => this can not customize the style based on columns/cells
+'F.Data.DataTable.ExportHTML("O","Order_No*!*Record_No*!*Customer*!*PrefixName*!*PrefixPart*!*Location*!*Description*!*Qty_Ordered*!*Qty_Shipped*!*Qty_BO*!*Date_Item_Prom*!*Ship_Via_Ship*!*Carrier_CD*!*State_Ship","","OrdersTable",True,v.Local.sTable)
+
+'Load table O to HTML -- using loop so that we can customize the style base on columns/cells
+v.Local..BulkDeclareString(sRows,sTD,sTDConcat,sColName,sTable)
+f.Intrinsic.String.Split("Order_No*!*Record_No*!*Customer*!*Name_Customer*!*Part*!*Location*!*Description*!*Qty_Ordered*!*Qty_BO*!*Date_Item_Prom*!*Ship_Via_Ship*!*Carrier_CD*!*State_Ship","*!*",v.Local.sCol)
+'Loop for the rows
+f.Intrinsic.Control.For(v.Local.i1,0,v.DataTable.O.RowCount--,1)
+	v.Local.sTDConcat.Set("")
+	'Loop the columns to customize the cell styles
+	f.Intrinsic.Control.For(v.Local.i2,0,v.Local.sCol.UBound,1)
+		v.Local.sColName.Set(v.Local.sCol(v.Local.i2))
+		F.Intrinsic.Control.SelectCase(v.Local.sColName)
+			F.Intrinsic.Control.Case("Order_No")			
+				f.Intrinsic.Control.If(v.DataTable.O(v.Local.i1).SHP_HLD_FLAG!FieldValTrim,=,"02",or,v.DataTable.O(v.Local.i1).SHP_HLD_FLAG!FieldValTrim,=,"04")
+					f.Intrinsic.String.Build("<td width = "5%" style="text-align:left; background-color:#FF0000;"><font color="white">{0}</font></td>",v.DataTable.O(V.Local.i1).[v.Local.sColName]!FieldValString,v.Local.sTD)					
+				f.Intrinsic.Control.Else
+					f.Intrinsic.String.Build("<td width = "5%" style="text-align:left;">{0}</td>",v.DataTable.O(V.Local.i1).[v.Local.sColName]!FieldValString,v.Local.sTD)
+				f.Intrinsic.Control.EndIf				
+			F.Intrinsic.Control.Case("Name_Customer")
+				f.Intrinsic.String.Build("<td width = "14%" style="text-align:left;">{0}</td>",v.DataTable.O(V.Local.i1).[v.Local.sColName]!FieldValString,v.Local.sTD)
+			F.Intrinsic.Control.Case("Part")
+				f.Intrinsic.String.Build("<td width = "13%" style="text-align:left;">{0}</td>",v.DataTable.O(V.Local.i1).[v.Local.sColName]!FieldValString,v.Local.sTD)
+			F.Intrinsic.Control.Case("Description")
+				f.Intrinsic.String.Build("<td width = "14%" style="text-align:left;">{0}</td>",v.DataTable.O(V.Local.i1).[v.Local.sColName]!FieldValString,v.Local.sTD)
+			F.Intrinsic.Control.Case("Date_Item_Prom")	
+				f.Intrinsic.String.Build("<td width = "6%" style="text-align:center;">{0}</td>",v.DataTable.O(V.Local.i1).[v.Local.sColName]!FieldValString,v.Local.sTD)			
+			F.Intrinsic.Control.Case("Ship_Via_Ship")	
+				f.Intrinsic.String.Build("<td width = "6%" style="text-align:left;">{0}</td>",v.DataTable.O(V.Local.i1).[v.Local.sColName]!FieldValString,v.Local.sTD)			
+			F.Intrinsic.Control.Case("State_Ship")	
+				f.Intrinsic.String.Build("<td width = "4%" style="text-align:center;">{0}</td>",v.DataTable.O(V.Local.i1).[v.Local.sColName]!FieldValString,v.Local.sTD)
+			F.Intrinsic.Control.CaseAny("Qty_Ordered","Qty_BO")	
+				f.Intrinsic.String.Build("<td width = "4%" style="text-align:right;">{0}</td>",v.DataTable.O(V.Local.i1).[v.Local.sColName]!FieldValString,v.Local.sTD)
+			f.Intrinsic.Control.CaseElse
+				f.Intrinsic.String.Build("<td width = "5%" style="text-align:left;">{0}</td>",v.DataTable.O(V.Local.i1).[v.Local.sColName]!FieldValString,v.Local.sTD)
+		F.Intrinsic.Control.EndSelect
+		f.Intrinsic.String.Build("{0}{1}{2}",v.Local.sTDConcat,v.Local.sTD,v.Ambient.NewLine,v.Local.sTDConcat)
+	f.Intrinsic.Control.Next(v.Local.i2)
+
+	'Customize the row back color based on Location: MAD Company Code: Location A = Salmon (reddish), Locations B, I and M = Blue; STX Company Code : Location S = Blue, Location O and R Salmon (reddish)
+	F.Intrinsic.Control.SelectCase(v.DataTable.O(v.Local.i1).Location!FieldValTrim)
+		F.Intrinsic.Control.CaseAny("A","O","R")
+			v.Local.sRowColor.Set("style="background-color:#FFDAB9"")
+		F.Intrinsic.Control.CaseAny("B","I","M","S")
+			v.Local.sRowColor.Set("style="background-color:#87CEFA"")
+		f.Intrinsic.Control.CaseElse
+			v.Local.sRowColor.Set("")
+	F.Intrinsic.Control.EndSelect
+	f.Intrinsic.String.Build("{0}<tr {3}>{1}<td width = "5%">&nbsp;</td>{1}{2}<td width = "5%">&nbsp;</td>{1}</tr>{1}",v.Local.sRows,v.Ambient.NewLine,v.Local.sTDConcat,v.Local.sRowColor,v.Local.sRows)		
+f.Intrinsic.Control.Next(v.Local.i1)
+
+f.Intrinsic.String.Build("<table class="TFtable" border="0">{0}<tbody>{0}{1}{0}</tbody>{0}</table>",v.Ambient.NewLine,v.Local.sRows,v.Local.sTable)
+F.Intrinsic.String.Replace(V.Local.sTable,"<td>0</td>","<td>&nbsp;</td>",V.local.sTable)
+
+'3/Insert to template HTML
+F.Intrinsic.String.Replace(V.Local.sHTML,"#CompanyName",v.Local.sCompanyName,V.Local.sHTML)
+F.Intrinsic.String.Replace(V.Local.sHTML,"#sleep",v.Global.iRefresh_Rate,V.Local.sHTML)
+F.Intrinsic.String.Replace(V.Local.sHTML,"#table",V.Local.sTable,V.Local.sHTML)
+
+'4/Save new HTML file.
+F.Intrinsic.String.Build("{0}\Trueview\4960\{1}\GCG_4960_Priority_Orders.html",V.Caller.GlobalDir,v.Caller.CompanyCode,V.Local.sFile)
+F.Intrinsic.File.String2File(V.Local.sFile,V.Local.sHTML)
+'5/Launch the Web page once if run from a custom menu item with switch 'O'
+F.Intrinsic.Control.If(V.Caller.Switches,=,"O")
+	F.Intrinsic.Task.ShellExec(V.Caller.Handle,"OPEN",V.Local.sFile,"","",1)
+f.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.Catch
+	F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}{1}GAB Version: {5}}",V.Ambient.ScriptPath,V.Ambient.Newline,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Ambient.GABVersion,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)	
+F.Intrinsic.Control.EndTry
+
+Program.Sub.Load.End
+
+Program.Sub.Unload.Start
+f.Intrinsic.Control.Try
+V.Local.sError.Declare
+
+F.ODBC.Connection!conX.close
+F.Intrinsic.Control.End
+
+F.Intrinsic.Control.Catch
+	F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}{1}GAB Version: {5}}",V.Ambient.ScriptPath,V.Ambient.Newline,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Ambient.GABVersion,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)	
+F.Intrinsic.Control.EndTry
+Program.Sub.Unload.End
+
+Program.Sub.Comments.Start
+${$0$}$$}$BAO$}$3/21/2018 8:59:51 AM$}$False
+${$3$}$0$}$$}$0$}$-1$}$$}$12:00:00 AM$}$
+'BN, Mar 21, 2018
+This is is custom TrueView to show shipping information for current orders
+
+1/Cutoff days and Refresh time are set in GCG_4960_Shipping_TrueView_Maint.g2u
+2/GCG_4960_Priority_Orders.g2u will launch and refresh the web page
+3/Order with (Order_Header.Code_Sort = 'PRTY' or Order_Line.User_2 = 'PRTY') and  Back Order > 0 are pulled in
+4/Lines are colored based on Locations
+5/Order Numbers are colored based on Shipping Hold flag
+6/This will be run for 2 company codes: MAD and STX of Mum Industry, Inc.
+7/The Web folder will be Global\Trueview\4960\XXX where XXX is the company code
+8/The Trueview can be run only 1 time from a custom menu item.
+If the GCG_4960_Priority_Orders.g2u is attached to a Task Scheduler on Daily, it will refresh the web page at interval until 11.00 pm
+Program.Sub.Comments.End
